@@ -288,6 +288,24 @@ def check_continuity(errors: list[str], label: str, actual: list[int], start: in
         errors.append(msg)
 
 
+def check_quote_balance(sql: str, errors: list[str]) -> None:
+    # 파일 전체에서 작은따옴표 짝이 맞는지 확인 (이스케이프 '' 고려).
+    # 짝이 안 맞으면 이스케이프되지 않은 ' 가 있을 가능성 → psql 적재가 통째로 실패.
+    i, in_str, n = 0, False, len(sql)
+    while i < n:
+        if sql[i] == "'":
+            if in_str and i + 1 < n and sql[i + 1] == "'":
+                i += 2
+                continue
+            in_str = not in_str
+        i += 1
+    if in_str:
+        errors.append(
+            "작은따옴표 짝이 맞지 않음 — 이스케이프되지 않은 ' 가능성. "
+            "본문·해설의 작은따옴표를 '' 로 이스케이프했는지 확인."
+        )
+
+
 def run_checks(parsed: _ParsedLesson, allocation: dict | None) -> list[str]:
     errors: list[str] = []
 
@@ -350,6 +368,10 @@ def main() -> int:
             return 2
 
     errors = run_checks(parsed, allocation)
+    try:
+        check_quote_balance(Path(args.sql_path).read_text(encoding="utf-8"), errors)
+    except OSError:
+        pass
     if errors:
         print("[FAIL] validate-lesson-sql", file=sys.stderr)
         for e in errors:

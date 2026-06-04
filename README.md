@@ -1,50 +1,25 @@
-### 📌 목적
+## 📌 목적
 
-**Gravit** 서비스의 학습 콘텐츠 품질과 운영 효율성을 높이기 위해, CS **문제**(Problem), **정답**(Answer), **선지**(Option) 생성 파이프라인을 자동화하는 인프라를 구축한다.
+**Gravit** 서비스의 CS 학습 콘텐츠(**문제**·**정답**·**선지**) 생성을 자동화하는 인프라다. 사람이 반복하던 **문제 생성 → 검수 → DB 적재** 워크플로우를, **Claude Code**의 Subagent·Skill·Hook을 엮어 한 번의 스킬 호출(`/generate-learning-content`)로 끝까지 실행한다.
 
-**Claude Code**의 **Subagent**, **Skill**, **Hook** 등을 활용해, 이전까지 사람이 반복 수행하던 **문제 생성 → 검수 → DB 적재** 워크플로우를 1회의 스킬 호출(`/generate-learning-content`)로 끝까지 실행한다.
-
-**파이프라인의 상태 추적**(pipeline-state), **정량 기반 검수 루브릭**, **피드백 루프**, **compaction 복구 프로토콜** 등을 도입해, Claude Code의 Subagent, Skill, Hook, Rule이 유기적으로 맞물려 돌아가는 **하네스 엔지니어링(Harness engineering) 기반 아키텍처**를 지향한다.
+단발성 LLM 호출이 아니라, 상태 추적·정량 검수 루브릭·피드백 루프·compaction 복구까지 갖춰 **수백 유닛을 일관된 품질로 돌리는 하네스 엔지니어링(Harness engineering)** 아키텍처를 지향한다.
 
 ---
 
-### 📌 설계 원칙
+## 📌 설계 원칙
 
-"LLM을 한 번 잘 호출한다"가 아니라, "LLM이 포함된 파이프라인이 수백 유닛에 걸쳐 일관된 품질로 돌아가게 만든다"를 목표로 **하네스 엔지니어링**을 지향했다. 
+"LLM을 한 번 잘 호출한다"가 아니라 "LLM이 포함된 파이프라인이 수백 유닛에 걸쳐 일관된 품질로 돌아가게 만든다"를 목표로 한다. 프롬프트에 기대는 대신, 파이프라인의 뼈대(절차·규범·상태·검증)를 파일과 코드 인프라로 분리한다.
 
-프롬프트에 의존하는 대신 **파이프라인의 뼈대(절차, 스펙, 상태, 검증)를 코드와 파일 바깥 인프라로 분리**하는 방향으로 설계했다.
-
-- **Skill이 절차를 소유한다.** 
-  - 8-phase 오케스트레이션은 `generate-learning-content` 스킬에 있고, phase별 runbook은 필요 시점에만 Read된다. 메인 세션의 컨텍스트는 얇게 유지된다.
-
-
-- **Spec은 SoT 문서로 분리한다.**
-  - 콘텐츠 규칙 · SQL 스키마 · 검수 루브릭 · writing-style 등 모든 규범은 `.claude/spec/` 하위 개별 문서에 있고, 스펙 한 곳을 고치면 generator · reviewer가 동일 기준으로 재동작한다.
-
-
-- **서브에이전트는 context fork로 격리·병렬화한다.**
-  - 유닛 간 교차 오염이 없고, reviewer는 read-only로 정답을 직접 풀어본 뒤 채점한다.
-
-
-- **검수는 정량 루브릭 + 피드백 루프로 고정한다.**
-  - R1~R6 정수 채점 → PASS/REJECT → 문제당 최대 3회 재생성 → 초과분 `manual-review` 태깅으로 사용자와 합의.
-
-
-- **상태는 파일 하나에 지속(persist)한다.**
-  - `pipeline-state-{YYYY-MM-DD}.md` 고정 스키마로 세션 compaction · 재시작에도 미완료 phase부터 재개 가능.
-
-
-- **중간 산출물을 디스크로 고정한다.**
-  - concept-note · lesson.sql · review.md 모두 날짜·유닛별 디렉토리에 남고, 서브에이전트 간에는 텍스트가 아니라 파일 경로가 오간다.
-
-
-- **스키마 검증 후 staging에만 적재한다.**
-  - `validate-lesson-{structure,sql}.py`로 구조·ID 연속성을 강제한 뒤 `_staging` 테이블로만 `psql --single-transaction` 적재. 운영 테이블에는 직접 쓰지 않는다.
-
+- **절차는 Skill이 소유한다.** 오케스트레이션은 스킬에 두고, 세부 절차는 필요 시점에만 읽어 메인 세션의 컨텍스트를 얇게 유지한다.
+- **규범은 SoT 스펙으로 분리한다.** 모든 규칙과 기준을 스펙 문서 한 곳에 두어, 한 곳을 고치면 생성기와 검수기가 같은 기준으로 재동작한다.
+- **작업은 서브에이전트로 격리·병렬화한다.** 유닛 간 교차 오염 없이 병렬로 생성하고, 검수는 read-only로 정답을 직접 풀어 본 뒤 독립적으로 채점한다.
+- **검수는 정량 기준 + 피드백 루프로 고정한다.** 점수화된 합격/재시도 루프로 품질을 수렴시키고, 한계를 넘는 항목은 사람과 합의해 마무리한다.
+- **상태와 산출물은 디스크에 고정한다.** 세션이 끊겨도 미완료 지점부터 재개하고, 에이전트 사이에는 텍스트가 아니라 파일 경로가 오간다.
+- **검증을 통과한 뒤 staging에만 적재한다.** 구조와 무결성을 강제로 검증한 다음, 운영과 분리된 staging 영역에만 쓴다.
 
 ---
 
-### 📌 파이프라인 구조
+## 📌 파이프라인 구조
 
 ```
 [/generate-learning-content {unit_ids} 호출]
@@ -99,7 +74,7 @@
 
 ---
 
-### 📌 파일 디렉토리 구조
+## 📌 파일 디렉토리 구조
 
 ```
 프로젝트 루트/
@@ -131,17 +106,21 @@
 │   │   └── notify-permission.sh               ← Notification 이벤트: 권한 요청 알림
 │   ├── scripts/
 │   │   ├── validate-lesson-structure.py       ← 레슨 구조(문제 수·선지 수·정답 수) 검증
-│   │   └── validate-lesson-sql.py             ← INSERT 쿼리 무결성 및 ID 연속성 검증
+│   │   └── validate-lesson-sql.py             ← INSERT 쿼리 무결성·ID 연속성·따옴표 검증
 │   ├── spec/                                  ← SoT spec 문서 (skill/agent가 필요 시점에 Read)
-│   │   ├── learning-content-rules.md          ← 콘텐츠 구성 규칙
-│   │   ├── learning-content-writing-style.md  ← 한국어 표기·CS 용어·일관성 스타일 규칙
-│   │   ├── learning-content-sql-schema.md     ← DB 테이블 스키마 (prod + _staging)
-│   │   ├── learning-content-sql-template.md   ← INSERT 쿼리 템플릿
-│   │   ├── problem-examples.md                ← generator few-shot 예시
-│   │   ├── id-management.md                   ← ID 발번 규칙
-│   │   ├── pipeline-state-template.md         ← pipeline-state 파일 스키마
-│   │   ├── review-rubric.md                   ← 검수 루브릭 (R1~R6 채점 기준)
-│   │   └── review-template.md                 ← 검수 출력 템플릿
+│   │   ├── generation/                        ← 콘텐츠 생성에 쓰이는 규범
+│   │   │   ├── learning-content-rules.md      ← 콘텐츠 구성 규칙 (INV·EXP 원칙 포함)
+│   │   │   ├── learning-content-writing-style.md  ← 한국어 표기·CS 용어·일관성 스타일 규칙
+│   │   │   ├── learning-content-sql-schema.md ← DB 테이블 스키마 (prod + _staging)
+│   │   │   ├── learning-content-sql-template.md   ← INSERT 쿼리 템플릿·이스케이프 규칙
+│   │   │   ├── problem-good-patterns.md       ← 따라 만들 모범 예시 (few-shot)
+│   │   │   ├── problem-antipatterns.md        ← 피해야 할 안티패턴 (생성 회피 + 검수 탐지)
+│   │   │   └── id-management.md               ← ID 발번 규칙
+│   │   ├── review/                            ← 채점에 쓰이는 기준
+│   │   │   ├── review-rubric.md               ← 검수 루브릭 (R1~R6 채점 기준)
+│   │   │   └── review-template.md             ← 검수 출력 템플릿
+│   │   └── pipeline/
+│   │       └── pipeline-state-template.md     ← pipeline-state 파일 스키마
 │   └── settings.local.json
 │
 └── pipeline-workspace/
