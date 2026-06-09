@@ -53,14 +53,16 @@ description: Gravit 서비스의 학습 콘텐츠 관련 테이블 스키마. pr
 
 **staging_label**
 
-| 컬럼         | 타입                           | 설명                                              |
-|--------------|--------------------------------|---------------------------------------------------|
-| id           | BIGINT PK                      | 라벨 식별자 (외부 발번 — **fetch-max-id** baseline 기반) |
-| label        | VARCHAR(32) UNIQUE NOT NULL    | 라벨 값 (**YYYY-MM-DD-{4자}**)                      |
-| unit_id      | BIGINT NOT NULL                | 유닛 식별자                                       |
-| description  | VARCHAR(255) NOT NULL          | **Unit {unit_id} - 신규 lesson 1건**                |
-| label_status | VARCHAR(20) NOT NULL           | **pending** / **completed**                           |
-| created_at   | TIMESTAMP NOT NULL DEFAULT NOW | 생성 시각                                         |
+| 컬럼        | 타입                                  | 설명                                              |
+|-------------|---------------------------------------|---------------------------------------------------|
+| id          | BIGINT PK                             | 라벨 식별자 (외부 발번 — **fetch-max-id** baseline 기반) |
+| label       | VARCHAR(32) UNIQUE NOT NULL           | 라벨 값 (**YYYY-MM-DD-{4자}**)                      |
+| unit_id     | BIGINT NOT NULL                       | 유닛 식별자                                       |
+| description | VARCHAR(255) NOT NULL                 | **Unit {unit_id} - 신규 lesson 1건**                |
+| status      | VARCHAR(20) NOT NULL DEFAULT 'PENDING' | **PENDING** / **COMPLETED** (CHECK 제약). **DB DEFAULT — 파이프라인은 INSERT하지 않음** |
+| created_at  | TIMESTAMP NOT NULL DEFAULT NOW()      | 생성 시각. **DB DEFAULT — 파이프라인은 INSERT하지 않음** |
+
+> 파이프라인은 `staging_label`에 **(id, label, unit_id, description)** 4개 컬럼만 INSERT한다. `status`·`created_at`은 DB DEFAULT가 채우므로 **직접 INSERT 금지**.
 
 **lesson_staging**
 
