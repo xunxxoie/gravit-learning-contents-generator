@@ -8,9 +8,11 @@
 .DS_Store
 
 ### Local Notes ###
-pipeline-workspace/problem-seed/format.py
 joonseo.md
 sql/
+
+### Pipeline Workspace ###
+pipeline-workspace/
 
 ### Env ###
 .env
